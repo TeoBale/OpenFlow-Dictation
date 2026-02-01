@@ -1,5 +1,4 @@
 // swift-tools-version: 6.0
-// The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
@@ -16,9 +15,24 @@ let package = Package(
     ],
     dependencies: [],
     targets: [
+        .systemLibrary(
+            name: "CWhisper"
+        ),
         .executableTarget(
             name: "OpenFlow",
-            dependencies: []
+            dependencies: ["CWhisper"],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-I", "External/whisper.cpp/include",
+                    "-I", "External/whisper.cpp/ggml/include"
+                ])
+            ],
+            linkerSettings: [
+                .linkedLibrary("whisper"),
+                .unsafeFlags([
+                    "-L", "External/whisper.cpp/build/src"
+                ])
+            ]
         ),
     ]
 )

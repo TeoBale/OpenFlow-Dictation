@@ -48,4 +48,4 @@ curl -L --progress-bar "$BASE_URL/$MODEL" -o "$OUTPUT_FILE"
 
 echo ""
 echo "Download complete: $OUTPUT_FILE"
-echo "File size: $(du -h \"$OUTPUT_FILE\" | cut -f1)"
+echo "File size: $(du -h "$OUTPUT_FILE" 2>/dev/null | cut -f1)"

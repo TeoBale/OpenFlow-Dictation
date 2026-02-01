@@ -10,10 +10,29 @@ class HotkeyManager {
     
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var isMonitoring = false
+    
+    // Primary shortcut: Custom key (code 179)
+    private let primaryKeyCode: Int64 = 179
+    
+    // Emergency stop: Escape key
+    private let escapeKeyCode: Int64 = 53
     
     private init() {}
     
     func registerHotkeys() {
+        print("⌨️  Registering hotkeys...")
+        
+        guard PermissionManager.shared.requestAccessibilityPermission() else {
+            print("❌ Accessibility permission required")
+            showAccessibilityPermissionAlert()
+            return
+        }
+        
+        setupEventTap()
+    }
+    
+    private func setupEventTap() {
         let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         
         guard let tap = CGEvent.tapCreate(
@@ -26,16 +45,34 @@ class HotkeyManager {
             },
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) else {
-            print("Failed to create event tap")
+            print("❌ Failed to create event tap")
             return
         }
         
         eventTap = tap
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         
-        if let source = runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-            CGEvent.tapEnable(tap: tap, enable: true)
+        guard let source = runLoopSource else { return }
+        
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        isMonitoring = true
+        
+        print("✅ Hotkeys active: Press your dictation key to toggle, Esc to stop")
+    }
+    
+    private func showAccessibilityPermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = "OpenFlow needs accessibility access for global hotkeys.\n\nEnable it in:\nSystem Settings > Privacy & Security > Accessibility"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Cancel")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
     
@@ -54,23 +91,31 @@ class HotkeyManager {
         
         eventTap = nil
         runLoopSource = nil
+        isMonitoring = false
     }
     
     private static func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-        guard type == .keyDown else {
+        
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        
+        guard let shared = Unmanaged<HotkeyManager>.fromOpaque(refcon!).takeUnretainedValue() as HotkeyManager? else {
             return Unmanaged.passRetained(event)
         }
         
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        
-        // Check for Cmd+Shift+Space (keycode 49 is space)
-        if keyCode == 49 && flags.contains(.maskCommand) && flags.contains(.maskShift) {
+        // Primary: Custom key (179) - toggle dictation
+        if keyCode == shared.primaryKeyCode {
             Task { @MainActor in
                 DictationService.shared.toggle()
             }
-            // Consume the event
-            return nil
+            return nil // Consume event
+        }
+        
+        // Emergency: Escape - stop dictation if active
+        if keyCode == shared.escapeKeyCode && DictationService.shared.isRecording {
+            Task { @MainActor in
+                DictationService.shared.stop()
+            }
+            return nil // Consume event
         }
         
         return Unmanaged.passRetained(event)

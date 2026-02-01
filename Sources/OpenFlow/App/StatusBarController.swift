@@ -40,6 +40,33 @@ class StatusBarController: ObservableObject {
         
         menu.addItem(NSMenuItem.separator())
         
+        // Shortcuts info
+        let shortcutsHeader = NSMenuItem(
+            title: "Shortcuts:",
+            action: nil,
+            keyEquivalent: ""
+        )
+        shortcutsHeader.isEnabled = false
+        menu.addItem(shortcutsHeader)
+        
+        let primaryShortcut = NSMenuItem(
+            title: "  • Press your dictation key",
+            action: nil,
+            keyEquivalent: ""
+        )
+        primaryShortcut.isEnabled = false
+        menu.addItem(primaryShortcut)
+        
+        let stopShortcut = NSMenuItem(
+            title: "  • Press Esc to stop",
+            action: nil,
+            keyEquivalent: ""
+        )
+        stopShortcut.isEnabled = false
+        menu.addItem(stopShortcut)
+        
+        menu.addItem(NSMenuItem.separator())
+        
         let settingsItem = NSMenuItem(
             title: "Settings...",
             action: #selector(openSettings),

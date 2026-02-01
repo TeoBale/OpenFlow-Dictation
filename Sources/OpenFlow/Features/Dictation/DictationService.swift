@@ -21,11 +21,28 @@ class DictationService: ObservableObject {
     private init() {
         setupAudioHandler()
         loadDefaultModel()
+        
+        // Subscribe to audio manager changes
+        audioManager.$isRecording
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] recording in
+                self?.isRecording = recording
+            }
+            .store(in: &cancellables)
+        
+        audioManager.$audioLevel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                // Can use this for UI updates
+            }
+            .store(in: &cancellables)
     }
     
     private func setupAudioHandler() {
+        // Audio handler runs on audio queue, not main queue
         audioManager.audioDataHandler = { [weak self] samples in
-            self?.transcriptionSession.appendAudio(samples)
+            // Just accumulate audio, don't do transcription here
+            // Transcription will happen when stop is called
         }
     }
     
@@ -57,12 +74,16 @@ class DictationService: ObservableObject {
     func start() {
         guard !isRecording else { return }
         
+        // Check accessibility - required for text injection
         guard PermissionManager.shared.requestAccessibilityPermission() else {
             showAccessibilityAlert()
             return
         }
         
         do {
+            // Clear any previous audio
+            audioManager.clearBuffer()
+            
             try audioManager.startRecording()
             transcriptionSession.start()
             
@@ -70,34 +91,60 @@ class DictationService: ObservableObject {
             isTranscribing = true
             currentTranscription = ""
             
-            print("Dictation started")
+            print("Dictation started - speak now...")
+            print("Press Cmd+Shift+Space again to stop")
         } catch {
             print("Failed to start recording: \(error)")
+            isRecording = false
+            showErrorAlert(message: "Failed to start recording. Please check microphone permissions.")
         }
     }
     
     func stop() {
         guard isRecording else { return }
         
+        print("Stopping dictation...")
+        
+        // Stop audio first
         audioManager.stopRecording()
         
-        let finalText = transcriptionSession.stop()
+        // Get all recorded audio
+        let audioData = audioManager.getRecordedAudio()
+        
+        // Stop transcription session
+        transcriptionSession.stop()
+        
         isRecording = false
         isTranscribing = false
         
+        // Process audio with Whisper (placeholder for now)
+        var finalText = ""
+        if !audioData.isEmpty {
+            // TODO: Real transcription
+            finalText = WhisperEngine.shared.transcribe(audioData: audioData)?.text ?? ""
+        }
+        
+        if finalText.isEmpty {
+            finalText = "[No speech detected]"
+        }
+        
+        // Process for IDE integration
         let processedText = ideIntegration.processForIDE(text: finalText)
         
-        KeyboardSimulator.insertText(processedText)
+        print("Transcribed: \(processedText)")
+        
+        // Insert text
+        if processedText != "[No speech detected]" {
+            KeyboardSimulator.insertText(processedText)
+        }
         
         currentTranscription = ""
-        
-        print("Dictation stopped. Inserted: \(processedText)")
     }
     
     private func showAccessibilityAlert() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = "OpenFlow needs accessibility access to type text into applications. Please grant permission in System Settings > Privacy & Security > Accessibility."
+        alert.informativeText = "OpenFlow needs accessibility access to type text into applications. Please:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Add and enable OpenFlow\n3. Restart the app"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
@@ -108,5 +155,14 @@ class DictationService: ObservableObject {
                 NSWorkspace.shared.open(url)
             }
         }
+    }
+    
+    private func showErrorAlert(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Error"
+        alert.informativeText = message
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }

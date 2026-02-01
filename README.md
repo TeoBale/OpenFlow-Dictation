@@ -1,4 +1,4 @@
-# OpenFlow Dictation
+# 🎤 OpenFlow Dictation
 
 **100% Offline, Privacy-First Voice Dictation for macOS**
 
@@ -22,21 +22,47 @@ OpenFlow Dictation is a lightweight, native macOS application that provides inte
 
 ## Installation
 
+### Prerequisites
+
+- macOS 14+ with Apple Silicon
+- Xcode Command Line Tools
+- Homebrew (for cmake)
+
 ### From Source
 
-1. Clone the repository
-2. Run the setup script:
+1. Clone the repository with submodules:
    ```bash
-   ./Scripts/setup_dev.sh
+   git clone --recursive <repo-url>
+   cd OpenFlow
    ```
-3. Download a Whisper model:
+
+2. Install cmake (if not already installed):
+   ```bash
+   brew install cmake
+   ```
+
+3. Build whisper.cpp library:
+   ```bash
+   cd External/whisper.cpp
+   cmake -B build -DWHISPER_METAL=ON
+   cmake --build build --config Release -j4
+   cd ../..
+   ```
+
+4. Download a Whisper model:
    ```bash
    ./Scripts/download_models.sh ggml-base.en.bin
    ```
-4. Build and run:
+
+5. Build and fix library paths:
    ```bash
    swift build
-   swift run
+   ./Scripts/fix_rpath.sh
+   ```
+
+6. Run the app:
+   ```bash
+   ./.build/debug/OpenFlow
    ```
 
 ### Build Release
@@ -51,8 +77,9 @@ This creates `dist/OpenFlow.app` which you can drag to Applications.
 
 1. Launch OpenFlow (it runs in the menu bar)
 2. Grant microphone and accessibility permissions when prompted
-3. Press `⌘⇧Space` to start/stop dictation
+3. Press your dictation key to toggle recording
 4. Speak naturally - text will be typed into the active text field
+5. Press `Esc` to stop dictation at any time
 
 ## IDE Integration
 
