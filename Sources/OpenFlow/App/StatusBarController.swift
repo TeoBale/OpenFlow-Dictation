@@ -9,8 +9,23 @@ class StatusBarController: ObservableObject {
     
     private var statusItem: NSStatusItem
     private var menu: NSMenu
+    private var languageMenu: NSMenu?
     
     @Published var isRecording = false
+    
+    // Available languages
+    let languages = [
+        ("en", "English"),
+        ("es", "Spanish"),
+        ("fr", "French"),
+        ("de", "German"),
+        ("it", "Italian"),
+        ("pt", "Portuguese"),
+        ("nl", "Dutch"),
+        ("ja", "Japanese"),
+        ("zh", "Chinese"),
+        ("ru", "Russian")
+    ]
     
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -37,6 +52,19 @@ class StatusBarController: ObservableObject {
         )
         startItem.target = self
         menu.addItem(startItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Language submenu
+        let currentLanguage = getCurrentLanguage()
+        let languageItem = NSMenuItem(
+            title: "Language: \(languageName(for: currentLanguage))",
+            action: nil,
+            keyEquivalent: ""
+        )
+        languageMenu = createLanguageMenu()
+        languageItem.submenu = languageMenu
+        menu.addItem(languageItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -86,6 +114,43 @@ class StatusBarController: ObservableObject {
         menu.addItem(quitItem)
         
         statusItem.menu = menu
+    }
+    
+    private func createLanguageMenu() -> NSMenu {
+        let submenu = NSMenu()
+        let currentLang = getCurrentLanguage()
+        
+        for (code, name) in languages {
+            let item = NSMenuItem(
+                title: name,
+                action: #selector(selectLanguage(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = code
+            item.state = (code == currentLang) ? .on : .off
+            submenu.addItem(item)
+        }
+        
+        return submenu
+    }
+    
+    private func getCurrentLanguage() -> String {
+        return UserDefaults.standard.string(forKey: "dictationLanguage") ?? "en"
+    }
+    
+    private func languageName(for code: String) -> String {
+        return languages.first { $0.0 == code }?.1 ?? code
+    }
+    
+    @objc private func selectLanguage(_ sender: NSMenuItem) {
+        guard let languageCode = sender.representedObject as? String else { return }
+        
+        UserDefaults.standard.set(languageCode, forKey: "dictationLanguage")
+        print("🌍 Language changed to: \(languageName(for: languageCode))")
+        
+        // Update menu to reflect the change
+        updateMenu()
     }
     
     @objc private func toggleDictation() {

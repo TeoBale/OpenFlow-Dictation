@@ -46,21 +46,47 @@ class DictationService: ObservableObject {
         }
     }
     
+    private var currentModelPath: String = ""
+    
     private func loadDefaultModel() {
-        let modelPath = getDefaultModelPath()
-        
-        if FileManager.default.fileExists(atPath: modelPath) {
+        if let modelPath = findAvailableModel() {
+            currentModelPath = modelPath
             let _ = WhisperEngine.shared.loadModel(from: modelPath)
+            print("📦 Loaded model: \(URL(fileURLWithPath: modelPath).lastPathComponent)")
         } else {
-            print("Default model not found at: \(modelPath)")
-            print("Please download a Whisper model to: ~/Library/Application Support/OpenFlow/Models/")
+            print("❌ No Whisper model found")
+            print("📥 Please download a model:")
+            print("   ./Scripts/download_models.sh ggml-base.bin    (multilingual)")
+            print("   ./Scripts/download_models.sh ggml-base.en.bin (English only)")
         }
     }
     
-    private func getDefaultModelPath() -> String {
+    private func findAvailableModel() -> String? {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let modelDir = appSupport.appendingPathComponent("OpenFlow/Models")
-        return modelDir.appendingPathComponent("ggml-base.en.bin").path
+        
+        // Priority order: multilingual models first, then English-only
+        let preferredModels = [
+            "ggml-base.bin",      // Multilingual base model
+            "ggml-small.bin",     // Multilingual small model
+            "ggml-tiny.bin",      // Multilingual tiny model
+            "ggml-base.en.bin",   // English-only base model
+            "ggml-small.en.bin",  // English-only small model
+            "ggml-tiny.en.bin"    // English-only tiny model
+        ]
+        
+        for modelName in preferredModels {
+            let modelPath = modelDir.appendingPathComponent(modelName).path
+            if FileManager.default.fileExists(atPath: modelPath) {
+                return modelPath
+            }
+        }
+        
+        return nil
+    }
+    
+    private func getDefaultModelPath() -> String {
+        return currentModelPath
     }
     
     func toggle() {
@@ -80,6 +106,9 @@ class DictationService: ObservableObject {
             return
         }
         
+        // Check language/model compatibility
+        checkLanguageCompatibility()
+        
         do {
             // Clear any previous audio
             audioManager.clearBuffer()
@@ -92,12 +121,52 @@ class DictationService: ObservableObject {
             currentTranscription = ""
             
             print("Dictation started - speak now...")
-            print("Press Cmd+Shift+Space again to stop")
+            print("Press your dictation key again to stop")
         } catch {
             print("Failed to start recording: \(error)")
             isRecording = false
             showErrorAlert(message: "Failed to start recording. Please check microphone permissions.")
         }
+    }
+    
+    private func checkLanguageCompatibility() {
+        let language = UserDefaults.standard.string(forKey: "dictationLanguage") ?? "en"
+        let modelPath = currentModelPath
+        
+        // Only check if we have a model loaded
+        guard !modelPath.isEmpty else { return }
+        
+        // Check if using English-only model with non-English language
+        let modelName = URL(fileURLWithPath: modelPath).lastPathComponent
+        if modelName.contains(".en.") && language != "en" {
+            print("⚠️  WARNING: Using English-only model '\(modelName)' for \(language) language")
+            print("⚠️  For better \(language) support, download: ggml-base.bin")
+            print("⚠️  Run: ./Scripts/download_models.sh ggml-base.bin")
+            
+            // Show warning to user (only once per session)
+            showLanguageWarning(language: language)
+        }
+    }
+    
+    private var hasShownLanguageWarning = false
+    
+    private func showLanguageWarning(language: String) {
+        guard !hasShownLanguageWarning else { return }
+        hasShownLanguageWarning = true
+        
+        let languageNames = [
+            "es": "Spanish", "fr": "French", "de": "German", 
+            "it": "Italian", "pt": "Portuguese", "nl": "Dutch",
+            "ja": "Japanese", "zh": "Chinese", "ru": "Russian"
+        ]
+        let langName = languageNames[language] ?? language
+        
+        let alert = NSAlert()
+        alert.messageText = "Language Support Limited"
+        alert.informativeText = "You're trying to dictate in \(langName), but you have the English-only model installed.\n\nTo support \(langName) and other languages, download the multilingual model:\n\n./Scripts/download_models.sh ggml-base.bin"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
     
     func stop() {
@@ -117,11 +186,14 @@ class DictationService: ObservableObject {
         isRecording = false
         isTranscribing = false
         
-        // Process audio with Whisper (placeholder for now)
+        // Process audio with Whisper
         var finalText = ""
         if !audioData.isEmpty {
-            // TODO: Real transcription
-            finalText = WhisperEngine.shared.transcribe(audioData: audioData)?.text ?? ""
+            // Get selected language
+            let language = UserDefaults.standard.string(forKey: "dictationLanguage") ?? "en"
+            print("🌍 Transcribing in language: \(language)")
+            
+            finalText = WhisperEngine.shared.transcribe(audioData: audioData, language: language)?.text ?? ""
         }
         
         if finalText.isEmpty {
